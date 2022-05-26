@@ -1199,6 +1199,43 @@ returns = [avg_return]
 #     print('step = {0}: Average Return = {1}'.format(step, avg_return))
 #     returns.append(avg_return)
 
+import tempfile
+import os
+
+global_step = tf.compat.v1.train.get_or_create_global_step()
+
+
+tempdir = os.getenv("TEST_TMPDIR", tempfile.gettempdir())
+checkpoint_dir = os.path.join(tempdir, 'checkpoint')
+train_checkpointer = common.Checkpointer(
+    ckpt_dir=checkpoint_dir,
+    max_to_keep=1,
+    agent=agent,
+    policy=agent.policy,
+    replay_buffer=replay_buffer,
+    global_step=global_step
+)
+
+import shutil
+from google.colab import files
+import zipfile
+import io
+
+def create_zip_file(dirname, base_filename):
+  return shutil.make_archive(base_filename, 'zip', dirname)
+
+def upload_and_unzip_file_to(dirname):
+  if files is None:
+    return
+  uploaded = files.upload()
+  for fn in uploaded.keys():
+    print('User uploaded file "{name}" with length {length} bytes'.format(
+        name=fn, length=len(uploaded[fn])))
+    shutil.rmtree(dirname)
+    zip_files = zipfile.ZipFile(io.BytesIO(uploaded[fn]), 'r')
+    zip_files.extractall(dirname)
+    zip_files.close()
+
 train_env.reset()
 
 for _ in range(num_iterations):
@@ -1217,10 +1254,34 @@ for _ in range(num_iterations):
   if step % log_interval == 0:
     print('step = {0}: loss = {1}'.format(step, train_loss.loss))
 
+  # if step % 5000 == 0:
+  #   train_checkpointer.save(global_step)
+  #   checkpoint_zip_filename = create_zip_file(checkpoint_dir, os.path.join(tempdir, 'exported_cp'))
+
+  #   if files is not None:
+  #     files.download(checkpoint_zip_filename) 
+
   if step % eval_interval == 0:
-    avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-    print('step = {0}: Average Return = {1:.2f}'.format(step, avg_return))
+    avg_return = compute_avg_return(train_env, agent.policy, num_eval_episodes)
+    print('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
+
+returns
+
+train_checkpointer.save(global_step)
+checkpoint_zip_filename = create_zip_file(checkpoint_dir, os.path.join(tempdir, 'exported_cp'))
+
+if files is not None:
+      files.download(checkpoint_zip_filename)
+
+iterations = range(0, num_iterations + 1, eval_interval)
+plt.plot(iterations, returns[:51])
+plt.ylabel('Average Return')
+plt.xlabel('Iterations')
+plt.ylim(top=1)
+
+# Commented out IPython magic to ensure Python compatibility.
+# %debug
 
 class DQN_UnoPlayer(UnoPlayer):
     def play(self, hand, up_card, called_color, state):
